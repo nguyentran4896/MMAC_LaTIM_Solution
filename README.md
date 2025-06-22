@@ -1,3 +1,42 @@
+# MMAC LaTIM Solution
+
+This repository contains code and resources for the MICCAI MMAC 2023 - Myopic Maculopathy Analysis Challenge (Task 2).
+
+## Project Structure
+- `data/` - Data directory (not included, see instructions below)
+- `Inference/` - Inference scripts and models
+- `Training/` - Training scripts and model definitions
+- `json_to_png.py` - Utility script
+
+## Data
+The data required for this project is not included in the repository due to size and licensing restrictions.
+
+To obtain the data, please visit the official competition page: [MICCAI MMAC 2023 - Myopic Maculopathy Analysis Challenge - Task 2](https://codalab.lisn.upsaclay.fr/competitions/12476)
+
+After downloading, place the data in this `data/` directory, preserving the folder structure as described in the competition documentation.
+
+### Data Directory Structure
+
+```mermaid
+graph TD;
+  A["data/"] --> B["2. Segmentation of Myopic Maculopathy Plus Lesions/"]
+  B --> C["1. Lacquer Cracks/"]
+  C --> D["1. Images/"]
+  D --> E["1. Training Set/"]
+  D --> F["2. Validation Set/"]
+  C --> G["2. Groundtruths/"]
+  B --> H["2. Choroidal Neovascularization/"]
+  B --> I["3. Fuchs Spot/"]
+```
+
+## Getting Started
+1. Clone this repository.
+2. Download the data as described above.
+3. Set up your Python environment and install dependencies (see below).
+
+## License
+See `LICENSE` for details.
+
 # MMAC_LaTIM_Solution
 
 
