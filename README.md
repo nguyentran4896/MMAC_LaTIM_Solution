@@ -29,6 +29,20 @@ graph TD;
   B --> I["3. Fuchs Spot/"]
 ```
 
+## Training Results (MA-Net)
+
+The following plot shows the training and validation loss and Dice coefficient for the MA-Net model trained on the Choroidal Neovascularization dataset. This model will be used for deployment on HiHorus.
+
+![MA-Net Training Progress](./logs/training_progress.png)
+
+**Final Results (at epoch 264):**
+- **Validation Dice:** ~0.93
+- **Validation IoU:** ~0.87
+- **Training Dice:** ~0.88
+- **Training Loss:** ~0.13
+
+The model shows strong convergence and generalization, with high Dice and IoU scores and no sign of overfitting. Training was stopped early as the validation metrics plateaued.
+
 ## Getting Started
 1. Clone this repository.
 2. Download the data as described above.
