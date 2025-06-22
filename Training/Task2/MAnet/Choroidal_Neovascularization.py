@@ -9,7 +9,6 @@ import torchvision.transforms as transforms
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ExponentialLR
 
 from sklearn.model_selection import train_test_split
@@ -21,23 +20,21 @@ from monai.transforms import Rand2DElastic
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import segmentation_models_pytorch as smp
+from plot_utils import plot_training_progress
 
 
 ### 设置参数
-images_file = '/data_GPU/yihao/MMAC/Task2/2. Segmentation of Myopic Maculopathy Plus Lesions/2. Choroidal Neovascularization/1. Images/1. Training Set'  # 训练图像路径
-gt_file = '/data_GPU/yihao/MMAC/Task2/2. Segmentation of Myopic Maculopathy Plus Lesions/2. Choroidal Neovascularization/2. Groundtruths/1. Training Set'
+images_file = './data/2. Segmentation of Myopic Maculopathy Plus Lesions/2. Choroidal Neovascularization/1. Images/1. Training Set'  # 训练图像路径
+gt_file = './data/2. Segmentation of Myopic Maculopathy Plus Lesions/2. Choroidal Neovascularization/2. Groundtruths/1. Training Set'
 image_size = 800 # 输入图像统一尺寸
 val_ratio = 0.1  # 训练/验证图像划分比例
 batch_size = 5 # 批大小
-num_workers = 6 # 数据加载处理器个数
 
-summary_dir = './logs'
 torch.backends.cudnn.benchmark = True
 print('cuda',torch.cuda.is_available())
 print('gpu number',torch.cuda.device_count())
 for i in range(torch.cuda.device_count()):
     print(torch.cuda.get_device_name(i))
-summaryWriter = SummaryWriter(summary_dir)
 
 # 训练/验证数据集划分
 filelists = os.listdir(gt_file)
@@ -74,7 +71,7 @@ class MACC_Dataset(Dataset):
              
         if self.mode == "train":
             transform = A.Compose([
-                A.Flip(),
+                A.HorizontalFlip(),
                 A.ShiftScaleRotate(shift_limit=0.2, rotate_limit=90),  # default = A.ShiftScaleRotate()
                 A.OneOf([
                     A.RandomBrightnessContrast(p=1),
@@ -127,30 +124,60 @@ val_dataset = MACC_Dataset(image_file = images_file,
                         filelists=val_filelists,mode='val')
 
 
+# Device selection for Apple Silicon (MPS), CUDA, or CPU
+device = (
+    torch.device("mps") if torch.backends.mps.is_available() else
+    torch.device("cuda") if torch.cuda.is_available() else
+    torch.device("cpu")
+)
+print(f"Using device: {device}")
+
 model = smp.MAnet(
     encoder_name="resnet34",        # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
     encoder_weights="imagenet",     # use `imagenet` pre-trained weights for encoder initialization
     in_channels=3,                  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
     classes=2,                      # model output channels (number of classes in your dataset)
 )
-x=torch.randn(1,3,800,800)
+model = model.to(device, dtype=torch.float32)
+
+x = torch.randn(1, 3, 800, 800, device=device, dtype=torch.float32)
 output = model(x)
 print(output.shape)
 
-model.cuda()
 metric = DiceLoss(to_onehot_y = True, softmax = True, include_background = False)
 criterion = nn.CrossEntropyLoss()
 #optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
 #scheduler = ExponentialLR(optimizer, gamma=0.99)
 
+# Set num_workers and pin_memory based on device
+if device.type == "mps":
+    num_workers = 0
+    pin_memory = False
+else:
+    num_workers = 6  # or your preferred value
+    pin_memory = True
 
-train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
-                          num_workers=num_workers, pin_memory=True)
-val_loader = DataLoader(dataset=val_dataset, batch_size=1, shuffle=False, num_workers=num_workers,
-                        pin_memory=True)
+train_loader = DataLoader(
+    dataset=train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    pin_memory=pin_memory
+)
+val_loader = DataLoader(
+    dataset=val_dataset,
+    batch_size=1,
+    shuffle=False,
+    num_workers=num_workers,
+    pin_memory=pin_memory
+)
 
 def get_dice(gt, pred, classId=1):
+    if hasattr(gt, "cpu"):
+        gt = gt.cpu().numpy()
+    if hasattr(pred, "cpu"):
+        pred = pred.cpu().numpy()
     if np.sum(gt) == 0:
         return np.nan
     else:
@@ -160,6 +187,10 @@ def get_dice(gt, pred, classId=1):
 
 
 def get_IoU(gt, pred, classId=1):
+    if hasattr(gt, "cpu"):
+        gt = gt.cpu().numpy()
+    if hasattr(pred, "cpu"):
+        pred = pred.cpu().numpy()
     if np.sum(gt) == 0:
         return np.nan
     else:
@@ -186,6 +217,8 @@ def get_mean_IoU_dice(gts_list, preds_list):
 best_dice = 0.0
 best_model_path = './weights/bestmodel.pth'
 num_epochs = 1000
+# Before training loop
+logs = {'train_loss': [], 'val_loss': [], 'train_dice': [], 'val_dice': []}
 for epoch in range(num_epochs):
     #print('lr now = ', get_learning_rate(optimizer))
     avg_loss_list = []
@@ -194,14 +227,10 @@ for epoch in range(num_epochs):
     model.train()
     with torch.enable_grad():
         for batch_idx, data in enumerate(train_loader):
-            img = (data[0]).float()
-            gt_label = (data[1])
+            img = (data[0]).to(device, dtype=torch.float32)
+            gt_label = (data[1]).to(device)
             #print(img.shape)
             #print(gt_label.shape)
-            
-            img = img.cuda()
-            gt_label = gt_label.cuda()
-            
             
             logits = model(img)
             #print(logits)
@@ -223,8 +252,6 @@ for epoch in range(num_epochs):
         avg_loss = np.array(avg_loss_list).mean()
         avg_dice = np.array(avg_dice_list).mean()
         print("[TRAIN] epoch={}/{} avg_loss={:.4f} avg_dice={:.4f}".format(epoch, num_epochs, avg_loss, (1.0-avg_dice)))
-        summaryWriter.add_scalars('loss', {"loss": (avg_loss)}, epoch)
-        summaryWriter.add_scalars('dice', {"dice": avg_dice}, epoch)
         
     model.eval()
     pred_img_list = []
@@ -232,12 +259,8 @@ for epoch in range(num_epochs):
     with torch.no_grad():
         for batch_idx, data in enumerate(val_loader):
             
-            img = (data[0]).float()
-            gt_label = (data[1])
-
-            img = img.cuda()
-            gt_label = gt_label.numpy()
-
+            img = (data[0]).to(device, dtype=torch.float32)
+            gt_label = (data[1]).to(device)
 
             logits = model(img)
             
@@ -258,8 +281,6 @@ for epoch in range(num_epochs):
 
         mean_Dice, mean_IoU = get_mean_IoU_dice(gt_label_list, pred_img_list)
         print("[EVAL] epoch={}/{}  mean_Dice={:.4f} mean_IoU={:.4f} ".format(epoch, num_epochs,mean_Dice,mean_IoU))
-        summaryWriter.add_scalars('mean_Dice', {"mean_Dice": mean_Dice}, epoch)
-        summaryWriter.add_scalars('mean_IoU', {"mean_IoU": mean_IoU}, epoch)
         
     #scheduler.step()
 
@@ -275,7 +296,12 @@ for epoch in range(num_epochs):
         best_dice = mean_Dice
         torch.save(model.state_dict(), best_model_path)          
 
-summaryWriter.close()
+    logs['train_loss'].append(avg_loss)
+    logs['train_dice'].append(1.0 - avg_dice)
+    logs['val_loss'].append(np.nan)  # If you have val loss, replace np.nan with actual value
+    logs['val_dice'].append(mean_Dice)
+    # Update the plot after each epoch
+    plot_training_progress(logs, save_path='./logs/training_progress.png', title='Choroidal Neovascularization Training Progress')
 
 
 
