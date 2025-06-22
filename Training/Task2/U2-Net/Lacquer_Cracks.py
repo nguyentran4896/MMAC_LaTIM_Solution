@@ -226,8 +226,8 @@ def U2NET_lite(out_ch=1):
 
 
 ### 设置参数
-images_file = '/data_GPU/yihao/MMAC/Task2/2. Segmentation of Myopic Maculopathy Plus Lesions/1. Lacquer Cracks/1. Images/1. Training Set'  # 训练图像路径
-gt_file = '/data_GPU/yihao/MMAC/Task2/2. Segmentation of Myopic Maculopathy Plus Lesions/1. Lacquer Cracks/2. Groundtruths/1. Training Set'
+images_file = './data/2. Segmentation of Myopic Maculopathy Plus Lesions/1. Lacquer Cracks/1. Images/1. Training Set'  # 训练图像路径
+gt_file = './data/2. Segmentation of Myopic Maculopathy Plus Lesions/1. Lacquer Cracks/2. Groundtruths/1. Training Set'
 image_size = 800 # 输入图像统一尺寸
 val_ratio = 0.1  # 训练/验证图像划分比例
 batch_size = 5 # 批大小
